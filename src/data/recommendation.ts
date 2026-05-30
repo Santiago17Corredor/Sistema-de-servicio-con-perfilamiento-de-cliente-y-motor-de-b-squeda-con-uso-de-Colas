@@ -1,158 +1,85 @@
 /// <reference types="vite/client" />
 import { Product } from "../app/components/product-card";
-import { calcularPageRank, Vector } from "./pagerank";
+import { calcularPageRankPonderado, Vector } from "./pagerank";
+import {
+  obtenerCola,
+  construirMapaTransiciones,
+  construirMatrizPesos,
+  construirVectorPersonalizacionDesdeCola,
+} from "./click-queue";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Adaptador: traduce el dominio "productos + preferencias del usuario" al
-// lenguaje del PDF (N nodos, predicado de enlaces, vector de personalización v)
+// Adaptador: traduce el dominio "productos + historial de clics del usuario"
+// al lenguaje del PDF (N nodos, matriz de pesos, vector de personalización v)
 // y delega todo el cálculo matemático a pagerank.ts.
 //
-// Este módulo es el único que conoce el formato del CSV. Home.tsx solo
-// interactúa con él a través de dos funciones:
+// Este módulo construye el grafo de transiciones a partir de la Cola de clics
+// del usuario activo (click-queue.ts). Las aristas representan transiciones
+// secuenciales reales del usuario, y sus pesos reflejan la frecuencia de
+// repetición de cada transición.
 //
-//   - cargarPesosIniciales(userId): lee el CSV una sola vez (semilla)
-//   - getRecommendations(products, pesos): calcula el orden actual
+// Home.tsx interactúa con él a través de una única función:
+//
+//   - getRecommendations(products, userId): calcula el orden actual
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type PesosCategoria = Record<string, number>;
-
-// Carga eager de los CSV de comportamiento de usuario
-const csvFiles = import.meta.glob('./user-behavior/*.csv', {
-  query: '?raw',
-  import: 'default',
-  eager: true,
-}) as Record<string, string>;
-
 
 /**
- * Lee el CSV del usuario y devuelve un mapa { categoria → peso }.
- * Esta es la "semilla" del perfil: se invoca una sola vez al montar Home.
- * A partir de ahí, las preferencias evolucionan en memoria.
+ * Devuelve los productos ordenados según el vector PageRank, calculado
+ * a partir del historial de clics (Cola FIFO) del usuario en sesión.
  *
- * Formato esperado del CSV:
+ * Modelado del problema:
  *
- *     userId,cycling,running,swimming,fitness,football
- *     user1,0.8,0.1,0.0,0.5,0.2
- */
-export function cargarPesosIniciales(userId: string): PesosCategoria {
-  const filePath = `./user-behavior/${userId}.csv`;
-  const fileContent = csvFiles[filePath];
-  if (!fileContent) return {};
-
-  const lines = fileContent.trim().split('\n');
-  if (lines.length < 2) return {};
-
-  const headers = lines[0].split(',').map(h => h.trim());
-  const values = lines[1].split(',').map(v => v.trim());
-
-  const pesos: PesosCategoria = {};
-  for (let i = 1; i < headers.length; i++) {
-    pesos[headers[i]] = parseFloat(values[i]) || 0;
-  }
-  return pesos;
-}
-
-
-/**
- * Construye el vector de personalización v a partir de los pesos por categoría.
+ *   - Cada producto es un nodo del grafo (N nodos).
+ *   - Las aristas dirigidas se generan a partir de la Cola de clics:
+ *     si el usuario pasó del Producto A al Producto B (clic consecutivo),
+ *     se crea una arista dirigida A → B.
+ *   - El peso de cada arista es la frecuencia de esa transición dentro
+ *     de la Cola (si A → B ocurrió 3 veces, el peso es 3).
+ *   - El vector de personalización v se construye a partir de la frecuencia
+ *     de visita de cada producto en la Cola (cuántas veces aparece →
+ *     proporción normalizada para Σ v[i] = 1).
  *
- *   - El peso de cada categoría se reparte uniformemente entre los productos
- *     de esa categoría.
- *   - v se normaliza para que Σ v[i] = 1 (requisito del PDF: v debe ser una
- *     distribución de probabilidad).
+ * Si la Cola está vacía (usuario nuevo sin historial), el PageRank se
+ * calcula con v = e/N (distribución uniforme) y sin aristas, lo que
+ * produce un ranking uniforme (todos los productos con la misma
+ * probabilidad), equivalente al comportamiento por defecto del PDF.
  *
- * Si todos los pesos son 0, devuelve null para que pagerank.ts use v = e/N.
- */
-function construirVectorPersonalizacion(
-  products: Product[],
-  pesos: PesosCategoria,
-): Vector | null {
-  const N = products.length;
-
-  // Conteo de productos por categoría
-  const conteoCat: Record<string, number> = {};
-  for (const p of products) {
-    conteoCat[p.category] = (conteoCat[p.category] ?? 0) + 1;
-  }
-
-  // v[i] = peso(categoria_i) / cantidad_productos_de_esa_categoria
-  const v: Vector = new Array(N).fill(0);
-  for (let i = 0; i < N; i++) {
-    const cat = products[i].category;
-    const peso = pesos[cat] ?? 0;
-    const n_cat = conteoCat[cat] ?? 1;
-    v[i] = peso / n_cat;
-  }
-
-  // Normalización para que Σ v = 1
-  const suma = v.reduce((acc, x) => acc + x, 0);
-  if (suma === 0) return null;
-  for (let i = 0; i < N; i++) v[i] /= suma;
-
-  return v;
-}
-
-
-/**
- * Devuelve los productos ordenados según el vector PageRank.
+ * El cálculo del PageRank se delega completamente a pagerank.ts mediante
+ * la función `calcularPageRankPonderado`.
  *
- * Modelado del problema en términos del PDF:
- *
- *   - Cada producto es un nodo del grafo.
- *   - Existe enlace de i a j si y solo si comparten categoría (i ≠ j).
- *   - El vector v se personaliza según los pesos por categoría actuales
- *     del usuario (que evolucionan con cada clic).
- *
- * El cálculo del PageRank se delega completamente a pagerank.ts.
+ * @param products Lista completa de productos del catálogo.
+ * @param userId   ID del usuario actualmente en sesión.
+ * @returns        Productos ordenados por π descendente.
  */
 export function getRecommendations(
   products: Product[],
-  pesos: PesosCategoria,
+  userId: string,
 ): Product[] {
   const N = products.length;
 
-  // Predicado de enlaces: misma categoría
-  const hayEnlace = (i: number, j: number): boolean =>
-    products[i].category === products[j].category;
+  // Obtener la cola de clics del usuario
+  const cola = obtenerCola(userId);
 
-  // Vector de personalización a partir de los pesos actuales
-  const v = construirVectorPersonalizacion(products, pesos);
+  // IDs de productos en el orden del catálogo (define el mapeo índice ↔ nodo)
+  const productIds = products.map((p) => p.id);
 
-  // Cálculo del PageRank (si v es null, pagerank.ts usa v = e/N)
-  const pi = calcularPageRank(N, hayEnlace, v ?? undefined);
+  // Construir la matriz de pesos a partir de las transiciones de la cola
+  const transiciones = construirMapaTransiciones(cola, productIds);
+  const pesos = construirMatrizPesos(transiciones, N);
+
+  // Vector de personalización basado en frecuencia de visita en la cola
+  const v: Vector | null = construirVectorPersonalizacionDesdeCola(
+    cola,
+    productIds,
+  );
+
+  // Cálculo del PageRank ponderado (si v es null, usa v = e/N)
+  const pi = calcularPageRankPonderado(N, pesos, v ?? undefined);
 
   // Ordenar productos por π descendente
   const indices = products.map((_, i) => i);
   indices.sort((a, b) => pi[b] - pi[a]);
 
-  return indices.map(i => products[i]);
-}
-
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Persistencia del perfil de usuario en localStorage
-// ─────────────────────────────────────────────────────────────────────────────
-
-const STORAGE_KEY_PREFIX = 'pagerank_pesos_';
-
-/**
- * Lee el perfil persistido de `localStorage` para el usuario dado.
- * Devuelve null si no existe ninguna entrada o si el JSON está corrupto.
- */
-export function leerPerfilPersistido(userId: string): PesosCategoria | null {
-  try {
-    const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${userId}`);
-    if (!raw) return null;
-    return JSON.parse(raw) as PesosCategoria;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Guarda los pesos del usuario en `localStorage` bajo la clave
- * `pagerank_pesos_<userId>`.
- */
-export function guardarPerfilPersistido(userId: string, pesos: PesosCategoria): void {
-  localStorage.setItem(`${STORAGE_KEY_PREFIX}${userId}`, JSON.stringify(pesos));
+  return indices.map((i) => products[i]);
 }

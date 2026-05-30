@@ -86,6 +86,41 @@ export function construirMatrizConectividad(
 }
 
 
+/**
+ * Construye una matriz de conectividad A ponderada de orden N.
+ *
+ * A diferencia de `construirMatrizConectividad` (binaria), aquí
+ * A[i][j] puede tomar cualquier valor real ≥ 0, representando el
+ * peso o frecuencia de la transición de i a j.
+ *
+ * La diagonal siempre se fuerza a 0 (no hay auto-enlaces).
+ *
+ * Nota: `hacerEstocastica` normaliza cada fila dividiendo por la
+ * suma O_i, de modo que pesos mayores se traducen en probabilidades
+ * de transición proporcionalmente mayores.
+ *
+ * @param N     Número de nodos.
+ * @param pesos Matriz N × N de pesos (frecuencias de transición).
+ * @returns     Matriz A ponderada de tamaño N × N.
+ */
+export function construirMatrizConectividadPonderada(
+    N: number,
+    pesos: number[][],
+): Matrix {
+    const A: Matrix = Array.from({ length: N }, () => Array(N).fill(0));
+
+    for (let i = 0; i < N; i++) {
+        for (let j = 0; j < N; j++) {
+            if (i !== j) {
+                A[i][j] = pesos[i][j];
+            }
+        }
+    }
+
+    return A;
+}
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PASO 2 — MATRIZ ESTOCÁSTICA  P̄  (manejo de nodos colgantes)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -294,3 +329,41 @@ export function calcularPageRank(
 
     return pi;
 }
+
+
+/**
+ * Calcula el vector PageRank π usando una matriz de conectividad ponderada.
+ *
+ * Variante de `calcularPageRank` que acepta directamente una matriz de
+ * pesos (frecuencias de transición) en lugar de un predicado booleano.
+ * La cadena es:
+ *
+ *     pesos  →  A (ponderada)  →  P̄  →  Q  →  π
+ *
+ * Esto permite que las probabilidades de transición reflejen la
+ * frecuencia real de navegación del usuario (ej. si el usuario pasó
+ * de A→B tres veces, esa transición tiene triple peso vs. una de
+ * una sola vez).
+ *
+ * @param N     Número de nodos.
+ * @param pesos Matriz N × N de pesos (frecuencias de transición).
+ * @param v     Vector de personalización (opcional, por defecto e/N).
+ * @param alpha Factor de amortiguamiento (opcional, por defecto 0.85).
+ * @returns     Vector PageRank π.
+ */
+export function calcularPageRankPonderado(
+    N: number,
+    pesos: number[][],
+    v?: Vector,
+    alpha: number = ALPHA_DEFAULT,
+): Vector {
+    // Vector de personalización por defecto: v = e/N
+    const v_efectivo: Vector = v ?? Array(N).fill(1 / N);
+
+    const A = construirMatrizConectividadPonderada(N, pesos);
+    const P_barra = hacerEstocastica(A, N);
+    const Q = construirMatrizGoogle(P_barra, v_efectivo, alpha, N);
+    const pi = metodoDePotencias(Q, N);
+
+    return pi;
+}

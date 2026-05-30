@@ -56,7 +56,37 @@ export function ProductCard({
         <div className="text-[#888] text-sm opacity-0 group-hover:opacity-100 transition-all duration-300 ease-in-out">
           {product.description}
         </div>
-        <div className="text-black mt-1">${product.price.toLocaleString()}</div>
+        <div className="text-black mt-1 font-semibold">${product.price.toLocaleString()}</div>
+
+        {/* Botón decorativo de compra — solo visual, sin lógica real */}
+        <button
+          type="button"
+          onClick={(e) => e.stopPropagation()}
+          className="mt-2 w-full flex items-center justify-center gap-2 px-4 py-2.5
+                     bg-gradient-to-r from-[#1a1a2e] to-[#16213e] text-white text-sm font-medium
+                     rounded-lg border-none cursor-pointer
+                     transition-all duration-200 ease-out
+                     hover:from-[#0f3460] hover:to-[#533483]
+                     hover:scale-[1.03] hover:shadow-[0_4px_15px_rgba(83,52,131,0.4)]
+                     active:scale-[0.97]"
+        >
+          {/* Icono de carrito SVG */}
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="9" cy="21" r="1" />
+            <circle cx="20" cy="21" r="1" />
+            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+          </svg>
+          Añadir al carrito
+        </button>
       </div>
     </div>
   );
