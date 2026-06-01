@@ -116,7 +116,6 @@ export function construirMatrizConectividadPonderada(
             }
         }
     }
-
     return A;
 }
 
@@ -153,19 +152,15 @@ export function hacerEstocastica(A: Matrix, N: number): Matrix {
     const P_barra: Matrix = Array.from({ length: N }, () => Array(N).fill(0));
 
     for (let i = 0; i < N; i++) {
-        // O_i = suma de la fila i
         let O_i = 0;
         for (let j = 0; j < N; j++) O_i += A[i][j];
 
         if (O_i === 0) {
-            // Nodo colgante: reemplazar fila por e/N
             for (let j = 0; j < N; j++) P_barra[i][j] = 1 / N;
         } else {
-            // Fila normal: dividir entre la suma
             for (let j = 0; j < N; j++) P_barra[i][j] = A[i][j] / O_i;
         }
     }
-
     return P_barra;
 }
 
@@ -214,15 +209,12 @@ export function construirMatrizGoogle(
     N: number,
 ): Matrix {
     const Q: Matrix = Array.from({ length: N }, () => Array(N).fill(0));
-
     for (let i = 0; i < N; i++) {
         for (let j = 0; j < N; j++) {
-            // E[i][j] = v[j]   (todas las filas de E son iguales a v)
             const E_ij = v[j];
             Q[i][j] = alpha * P_barra[i][j] + (1 - alpha) * E_ij;
         }
     }
-
     return Q;
 }
 
@@ -263,29 +255,22 @@ export function metodoDePotencias(
     epsilon: number = EPSILON_DEFAULT,
     maxIter: number = MAX_ITER_DEFAULT,
 ): Vector {
-    // π_0 = e/N  (distribución uniforme inicial)
     let pi: Vector = Array(N).fill(1 / N);
-
     for (let k = 0; k < maxIter; k++) {
-        // π_{k+1} = π_k · Q   (multiplicación vector fila por matriz)
         const pi_next: Vector = Array(N).fill(0);
         for (let j = 0; j < N; j++) {
             let suma = 0;
             for (let i = 0; i < N; i++) suma += pi[i] * Q[i][j];
             pi_next[j] = suma;
         }
-
-        // Criterio de convergencia: ‖π_{k+1} − π_k‖_∞ < ε
         let diff = 0;
         for (let i = 0; i < N; i++) {
             const d = Math.abs(pi_next[i] - pi[i]);
             if (d > diff) diff = d;
         }
-
         pi = pi_next;
         if (diff < epsilon) break;
     }
-
     return pi;
 }
 
@@ -357,13 +342,11 @@ export function calcularPageRankPonderado(
     v?: Vector,
     alpha: number = ALPHA_DEFAULT,
 ): Vector {
-    // Vector de personalización por defecto: v = e/N
     const v_efectivo: Vector = v ?? Array(N).fill(1 / N);
-
     const A = construirMatrizConectividadPonderada(N, pesos);
     const P_barra = hacerEstocastica(A, N);
     const Q = construirMatrizGoogle(P_barra, v_efectivo, alpha, N);
     const pi = metodoDePotencias(Q, N);
 
     return pi;
-}
+}

@@ -8,6 +8,7 @@ export type Product = {
   price: number;
   image: string;
   category: string;
+  esAd: boolean;
 };
 
 export function ProductCard({
@@ -36,15 +37,24 @@ export function ProductCard({
   return (
     <div
       onClick={handleClick}
-      className={`group flex flex-col gap-3 rounded-xl cursor-pointer bg-white
-        transition-all duration-300 ease-out
+      className={`group flex flex-col gap-3 rounded-xl cursor-pointer bg-white relative
+        transition-all duration-300 ease-out border
+        ${product.esAd
+          ? "border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.06)] bg-gradient-to-b from-amber-500/[0.015] to-white hover:border-amber-500/80 hover:shadow-[0_8px_30px_rgba(245,158,11,0.12)]"
+          : "border-transparent shadow-sm hover:shadow-[0_8px_25px_rgba(0,0,0,0.12)]"
+        }
         ${pulse
           ? "scale-[0.999999999] shadow-[0_0_20px_15px rgba(0,0,0,0.12)]" // Efecto "boom": se encoge y la sombra se expande desvaneciéndose
-          : "scale-100 shadow-sm hover:scale-[1.03] hover:shadow-[0_8px_25px_rgba(0,0,0,0.12)]"
+          : "scale-100 hover:scale-[1.03]"
         }
       `}
     >
-      <div className="aspect-square w-full bg-[#f4f4f4] overflow-hidden rounded-t-xl">
+      <div className="aspect-square w-full bg-[#f4f4f4] overflow-hidden rounded-t-xl relative">
+        {product.esAd && (
+          <div className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 bg-amber-500 text-white rounded text-[9px] font-bold tracking-wider uppercase shadow-sm select-none">
+            Patrocinado
+          </div>
+        )}
         <ImageWithFallback
           src={product.image}
           alt={product.name}
