@@ -54,21 +54,25 @@ const DEFAULT_LIMIT = 5;
 let cachedUserId: string | null = null;
 let cachedPi: Vector | null = null;
 let cachedColaLength = -1;
+let cachedLastTimestamp = 0;
 
 /**
- * Obtiene (o recalcula si es necesario) el vector PageRank π del usuario.
- * Se invalida la caché cuando cambia el userId o la longitud de la cola
- * (indicando nuevos clics).
+ * Obtiene (o recalcula si es necesario) el vector PageRank del usuario.
+ * Se invalida la caché cuando cambia el userId, la longitud de la cola o
+ * el timestamp del último clic (lo que indica nuevos clics incluso si
+ * la cola FIFO ya está llena en su capacidad máxima).
  */
 function obtenerPageRankUsuario(userId: string): Vector {
   const cola = obtenerCola(userId);
   const colaLen = cola.length;
+  const lastTimestamp = colaLen > 0 ? cola[colaLen - 1].timestamp : 0;
 
   // Usar caché si es válida
   if (
     cachedPi &&
     cachedUserId === userId &&
-    cachedColaLength === colaLen
+    cachedColaLength === colaLen &&
+    cachedLastTimestamp === lastTimestamp
   ) {
     return cachedPi;
   }
@@ -93,6 +97,7 @@ function obtenerPageRankUsuario(userId: string): Vector {
   cachedUserId = userId;
   cachedPi = pi;
   cachedColaLength = colaLen;
+  cachedLastTimestamp = lastTimestamp;
 
   return pi;
 }

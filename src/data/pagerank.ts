@@ -166,187 +166,176 @@ export function hacerEstocastica(A: Matrix, N: number): Matrix {
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PASO 3 — MATRIZ DE GOOGLE  Q
+// PASO 3 — MATRIZ ESTOCÁSTICA POR COLUMNAS  H
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Construye la matriz de Google Q como combinación lineal convexa
- * de la matriz estocástica P̄ y la matriz de perturbación E = v·eᵀ.
+ * Transpone la matriz estocástica por filas P̄ para obtener la matriz H,
+ * la cual es estocástica por columnas.
  *
- * Fórmula 3.1 (Cap. 3, pág. 30):
+ * Esto permite que la multiplicación H * r_n sea matemáticamente correcta
+ * en la formulación de vectores columna.
  *
- *     Q = α·P̄ + (1 − α)·E,        con   E = v·eᵀ,   0 ≤ α ≤ 1
- *
- * Donde:
- *   - v es el vector de personalización (distribución de probabilidad).
- *   - e es el vector fila de unos.
- *   - El producto v·eᵀ es una matriz de N × N cuya fila i tiene el
- *     valor v[i] repetido en todas las columnas... NO. Atención:
- *
- *     En la tesis, v es un vector fila y eᵀ es columna, por lo que
- *     v·eᵀ es un escalar (producto interno). Sin embargo, en el
- *     contexto en que la tesis lo usa (pág. 30), E debe ser una
- *     matriz N × N estocástica cuyas filas son todas iguales a v.
- *     Es decir, en la práctica E[i][j] = v[j], independiente de i.
- *
- *     Caso uniforme (Apéndice A): v = e/N  ⇒  E[i][j] = 1/N.
- *
- * Por convexidad, Q es estocástica (sus filas suman 1) y, si v tiene
- * todas sus entradas positivas, Q es irreducible y aperiódica, lo que
- * por el Teorema de Perron–Frobenius garantiza la existencia y unicidad
- * del vector estacionario π (Cap. 3, pág. 33).
- *
- * @param P_barra Matriz estocástica.
- * @param v       Vector de personalización (debe sumar 1).
- * @param alpha   Factor de amortiguamiento (por defecto 0.85).
+ * @param P_barra Matriz estocástica por filas.
  * @param N       Orden de la matriz.
- * @returns       Matriz de Google Q.
+ * @returns       Matriz H estocástica por columnas (H = P_barraᵀ).
  */
-export function construirMatrizGoogle(
-    P_barra: Matrix,
-    v: Vector,
-    alpha: number,
-    N: number,
-): Matrix {
-    const Q: Matrix = Array.from({ length: N }, () => Array(N).fill(0));
+export function obtenerMatrizColumnas(P_barra: Matrix, N: number): Matrix {
+    const H: Matrix = Array.from({ length: N }, () => Array(N).fill(0));
     for (let i = 0; i < N; i++) {
         for (let j = 0; j < N; j++) {
-            const E_ij = v[j];
-            Q[i][j] = alpha * P_barra[i][j] + (1 - alpha) * E_ij;
+            H[i][j] = P_barra[j][i];
         }
     }
-    return Q;
+    return H;
 }
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PASO 4 — MÉTODO DE POTENCIAS  π
+// PASO 4 — MÉTODO DE LAS POTENCIAS ITERATIVO (r_{n+1} = d * H * r_n + (1 - d) * r_0)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Calcula el vector PageRank π mediante el método de potencias.
+ * Calcula el vector PageRank r_{n+1} de manera explícita paso a paso mediante el Método de las Potencias,
+ * aplicando exactamente la ecuación: r_{n+1} = d * H * r_n + (1 - d) * r_0.
  *
- * Fundamento (Cap. 1, fórmula 1.5; Cap. 3, pág. 33; Apéndice A):
- *
- *     π_{k+1} = π_k · Q
- *
- * Por el Teorema 1.3 (cadena irreducible, recurrente positiva y
- * aperiódica), la sucesión {π_k} converge a la única distribución
- * estacionaria π* que satisface:
- *
- *     π* · Q = π*       y       Σ π*[i] = 1
- *
- * El algoritmo se detiene cuando ‖π_{k+1} − π_k‖_∞ < ε.
- *
- * Inicialización: π_0 = e/N (distribución uniforme), que es la elección
- * estándar y la usada por la tesis en su simulación (Apéndice A, donde
- * se toma una potencia grande de la matriz, equivalente a iterar desde
- * cualquier distribución inicial).
- *
- * @param Q        Matriz de Google.
- * @param N        Orden de la matriz.
+ * @param H        Matriz estocástica por columnas.
+ * @param r_0      Vector inicial o de personalización (distribución uniforme e/N por defecto).
+ * @param d        Factor de amortiguamiento (damping factor).
+ * @param N        Número de nodos (orden de la matriz).
  * @param epsilon  Tolerancia de convergencia.
  * @param maxIter  Número máximo de iteraciones.
- * @returns        Vector PageRank π (distribución estacionaria).
+ * @returns        Vector PageRank final estacionario (r_n).
  */
 export function metodoDePotencias(
-    Q: Matrix,
+    H: Matrix,
+    r_0: Vector,
+    d: number,
     N: number,
     epsilon: number = EPSILON_DEFAULT,
     maxIter: number = MAX_ITER_DEFAULT,
 ): Vector {
-    let pi: Vector = Array(N).fill(1 / N);
+    // r_n inicializada con la distribución uniforme r_0 (o el vector de personalización)
+    let r_n: Vector = [...r_0];
+
     for (let k = 0; k < maxIter; k++) {
-        const pi_next: Vector = Array(N).fill(0);
-        for (let j = 0; j < N; j++) {
+        const r_next: Vector = Array(N).fill(0);
+
+        // PASO A: Multiplicar la matriz H por el vector r_n (H * r_n)
+        const tempA: Vector = Array(N).fill(0);
+        for (let i = 0; i < N; i++) {
             let suma = 0;
-            for (let i = 0; i < N; i++) suma += pi[i] * Q[i][j];
-            pi_next[j] = suma;
+            for (let j = 0; j < N; j++) {
+                suma += H[i][j] * r_n[j];
+            }
+            tempA[i] = suma;
         }
+
+        // PASO B: Multiplicar ese resultado por el escalar d (d * H * r_n)
+        const tempB: Vector = Array(N).fill(0);
+        for (let i = 0; i < N; i++) {
+            tempB[i] = d * tempA[i];
+        }
+
+        // PASO C: Multiplicar el vector r_0 por el escalar (1 - d) -> ((1 - d) * r_0)
+        const tempC: Vector = Array(N).fill(0);
+        const uno_menos_d = 1 - d;
+        for (let i = 0; i < N; i++) {
+            tempC[i] = uno_menos_d * r_0[i];
+        }
+
+        // PASO D: Sumar los resultados del Paso B y el Paso C para obtener r_next (r_{n+1})
+        for (let i = 0; i < N; i++) {
+            r_next[i] = tempB[i] + tempC[i];
+        }
+
+        // Criterio de parada: diferencia máxima absoluta entre r_next y r_n (Norma infinito)
         let diff = 0;
         for (let i = 0; i < N; i++) {
-            const d = Math.abs(pi_next[i] - pi[i]);
-            if (d > diff) diff = d;
+            const diff_val = Math.abs(r_next[i] - r_n[i]);
+            if (diff_val > diff) {
+                diff = diff_val;
+            }
         }
-        pi = pi_next;
-        if (diff < epsilon) break;
+
+        r_n = r_next;
+
+        if (diff < epsilon) {
+            break;
+        }
     }
-    return pi;
+
+    return r_n;
 }
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FUNCIÓN PRINCIPAL — orquesta los 4 pasos
+// FUNCIÓN PRINCIPAL — orquesta los pasos del PageRank
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Calcula el vector PageRank π para un grafo dirigido de N nodos.
+ * Calcula el vector PageRank r para un grafo de N nodos.
  *
- * Encadena los cuatro pasos del algoritmo según el PDF:
+ * Encadena los pasos del algoritmo:
  *
- *     A  →  P̄  →  Q  →  π
+ *     A  →  P̄  →  H (columnas)  →  r
  *
- * Si no se proporciona el vector v, se usa v = e/N (caso uniforme,
- * Apéndice A). Si se proporciona un v personalizado, se obtiene el
- * "PageRank personalizado" mencionado en el Cap. 3, pág. 30, donde
- * la tesis llama a v explícitamente "vector de personalización o
- * de teleportación".
+ * Si no se proporciona el vector v (r_0), se usa v = e/N (caso uniforme).
  *
  * @param N         Número de nodos.
  * @param hayEnlace Predicado (i, j) → boolean del grafo dirigido.
  * @param v         Vector de personalización (opcional, por defecto e/N).
- * @param alpha     Factor de amortiguamiento (opcional, por defecto 0.85).
- * @returns         Vector PageRank π.
+ * @param d         Factor de amortiguamiento (opcional, por defecto 0.85).
+ * @returns         Vector PageRank final.
  */
 export function calcularPageRank(
     N: number,
     hayEnlace: (i: number, j: number) => boolean,
     v?: Vector,
-    alpha: number = ALPHA_DEFAULT,
+    d: number = ALPHA_DEFAULT,
 ): Vector {
-    // Vector de personalización por defecto: v = e/N
-    const v_efectivo: Vector = v ?? Array(N).fill(1 / N);
+    // Vector de personalización / inicial por defecto: r_0 = e/N
+    const r_0: Vector = v ?? Array(N).fill(1 / N);
 
     const A = construirMatrizConectividad(N, hayEnlace);
     const P_barra = hacerEstocastica(A, N);
-    const Q = construirMatrizGoogle(P_barra, v_efectivo, alpha, N);
-    const pi = metodoDePotencias(Q, N);
+    
+    // Obtener la matriz estocástica por columnas H = P_barraᵀ
+    const H = obtenerMatrizColumnas(P_barra, N);
 
-    return pi;
+    // Calcular el vector PageRank usando el método de potencias explícito
+    const r = metodoDePotencias(H, r_0, d, N);
+
+    return r;
 }
 
 
 /**
- * Calcula el vector PageRank π usando una matriz de conectividad ponderada.
- *
- * Variante de `calcularPageRank` que acepta directamente una matriz de
- * pesos (frecuencias de transición) en lugar de un predicado booleano.
- * La cadena es:
- *
- *     pesos  →  A (ponderada)  →  P̄  →  Q  →  π
- *
- * Esto permite que las probabilidades de transición reflejen la
- * frecuencia real de navegación del usuario (ej. si el usuario pasó
- * de A→B tres veces, esa transición tiene triple peso vs. una de
- * una sola vez).
+ * Calcula el vector PageRank r usando una matriz de conectividad ponderada.
  *
  * @param N     Número de nodos.
  * @param pesos Matriz N × N de pesos (frecuencias de transición).
  * @param v     Vector de personalización (opcional, por defecto e/N).
- * @param alpha Factor de amortiguamiento (opcional, por defecto 0.85).
- * @returns     Vector PageRank π.
+ * @param d     Factor de amortiguamiento (opcional, por defecto 0.85).
+ * @returns     Vector PageRank final.
  */
 export function calcularPageRankPonderado(
     N: number,
     pesos: number[][],
     v?: Vector,
-    alpha: number = ALPHA_DEFAULT,
+    d: number = ALPHA_DEFAULT,
 ): Vector {
-    const v_efectivo: Vector = v ?? Array(N).fill(1 / N);
+    // Vector de personalización / inicial por defecto: r_0 = e/N
+    const r_0: Vector = v ?? Array(N).fill(1 / N);
+
     const A = construirMatrizConectividadPonderada(N, pesos);
     const P_barra = hacerEstocastica(A, N);
-    const Q = construirMatrizGoogle(P_barra, v_efectivo, alpha, N);
-    const pi = metodoDePotencias(Q, N);
+    
+    // Obtener la matriz estocástica por columnas H = P_barraᵀ
+    const H = obtenerMatrizColumnas(P_barra, N);
 
-    return pi;
+    // Calcular el vector PageRank usando el método de potencias explícito
+    const r = metodoDePotencias(H, r_0, d, N);
+
+    return r;
 }
