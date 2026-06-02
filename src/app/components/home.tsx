@@ -25,7 +25,7 @@ export function Home({ userId, onLogout }: { userId: string; onLogout: () => voi
 
   // ── Cálculo de PageRank ──────────────────────────────────────────────────
   // Se recalcula cuando cambia userId o cada RECALC_EVERY clics.
-  const recommended = useMemo<Product[]>(() => {
+  const { productosVenta, anuncios } = useMemo(() => {
     return getRecommendations(PRODUCTS, userId);
   }, [userId, clickVersion]);
 
@@ -63,12 +63,40 @@ export function Home({ userId, onLogout }: { userId: string; onLogout: () => voi
         </button>
       </nav>
 
-      <main className="pt-24 pb-16 px-8 max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8">
-          {recommended.map((p) => (
-            <ProductCard key={p.id} product={p} onClick={onProductClick} />
-          ))}
+      <main className="pt-24 pb-16 px-8 max-w-7xl mx-auto flex flex-col lg:flex-row gap-8">
+        {/* Main Content Area: productosVenta */}
+        <div className="flex-1 flex flex-col gap-6">
+          <div className="border-b border-[#f0f0f0] pb-4">
+            <h2 className="font-bold text-black text-2xl tracking-wide">
+              Productos Recomendados
+            </h2>
+            <p className="text-[#888] text-sm">
+              Nuestra selección exclusiva para ti basada en tu navegación deportiva
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+            {productosVenta.map((p) => (
+              <ProductCard key={p.id} product={p} onClick={onProductClick} />
+            ))}
+          </div>
         </div>
+
+        {/* Sidebar Container: anuncios */}
+        <aside className="w-full lg:w-80 shrink-0 bg-[#fafafa] p-6 rounded-2xl border border-[#eaeaea] flex flex-col gap-6 self-start">
+          <div className="flex flex-col gap-1 border-b border-[#f0f0f0] pb-4">
+            <h3 className="font-bold text-black text-lg tracking-wide flex items-center gap-2">
+              <span className="text-amber-500">✨</span> Patrocinados
+            </h3>
+            <p className="text-[#888] text-xs">
+              Sugerencias personalizadas de anunciantes
+            </p>
+          </div>
+          <div className="flex flex-col gap-6">
+            {anuncios.map((p) => (
+              <ProductCard key={p.id} product={p} onClick={onProductClick} />
+            ))}
+          </div>
+        </aside>
       </main>
     </div>
   );

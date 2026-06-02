@@ -55,7 +55,10 @@ import {
 export function getRecommendations(
   products: Product[],
   userId: string,
-): Product[] {
+): {
+  productosVenta: Product[];
+  anuncios: Product[];
+} {
   const N = products.length;
 
   // Obtener la cola de clics del usuario
@@ -81,5 +84,11 @@ export function getRecommendations(
   const indices = products.map((_, i) => i);
   indices.sort((a, b) => pi[b] - pi[a]);
 
-  return indices.map((i) => products[i]);
+  const sortedProducts = indices.map((i) => products[i]);
+
+  // Filtrar en dos listas distintas manteniendo el orden de relevancia
+  const productosVenta = sortedProducts.filter((p) => !p.esAd);
+  const anuncios = sortedProducts.filter((p) => p.esAd);
+
+  return { productosVenta, anuncios };
 }
